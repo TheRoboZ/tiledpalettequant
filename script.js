@@ -1,4 +1,4 @@
-import { Action, ColorZeroBehaviour, Dither, DitherPattern } from "./enums.js";
+import { Action, ColorZeroBehaviour, Dither, DitherPattern, PaletteMode } from "./enums.js";
 const body = document.getElementById("body");
 const imageSelector = document.getElementById("image_selector");
 const tileWidthInput = document.getElementById("tile_width");
@@ -96,7 +96,47 @@ const ditherPatternValues = [
     DitherPattern.Vertical2,
 ];
 let sourceImageName = "carina";
+const paletteGenerateInput = document.getElementById("palette_generate");
+const paletteCustomInput = document.getElementById("palette_custom");
+const paletteFileInput = document.getElementById("palette_file");
+const paletteModeButtons = [paletteGenerateInput, paletteCustomInput];
+const paletteModeValues = [PaletteMode.Generate, PaletteMode.Custom];
+let customPalette = null;
 let sourceImage = document.getElementById("source_img");
+
+// Store original label text for palette mode UI updates
+const originalLabels = {
+    bits_per_channel: document.querySelector('label[for="bits_per_channel"]')?.textContent || "",
+    fraction_of_pixels: document.querySelector('label[for="fraction_of_pixels"]')?.textContent || "",
+};
+
+function updatePaletteModeUI() {
+    const isCustomMode = paletteCustomInput.checked;
+
+    // Inputs to disable in custom palette mode
+    const disabledInCustomMode = [
+        [bitsPerChannelInput, "bits_per_channel"],
+        [fractionOfPixelsInput, "fraction_of_pixels"],
+    ];
+
+    for (const [input, labelId] of disabledInCustomMode) {
+        input.disabled = isCustomMode;
+        const label = document.querySelector(`label[for="${labelId}"]`);
+        if (label) {
+            if (isCustomMode) {
+                label.textContent = originalLabels[labelId];
+                label.style.opacity = "0.6";
+            } else {
+                label.textContent = originalLabels[labelId];
+                label.style.opacity = "1";
+            }
+        }
+    }
+}
+
+paletteGenerateInput.addEventListener("change", updatePaletteModeUI);
+paletteCustomInput.addEventListener("change", updatePaletteModeUI);
+
 body.addEventListener("dragover", (event) => {
     event.preventDefault();
     if (event.dataTransfer == null)
@@ -126,6 +166,124 @@ imageSelector.addEventListener("change", () => {
     }
 });
 let inProgress = false;
+
+paletteFileInput.addEventListener("change", () => {
+    if (paletteFileInput.files == null)
+        return;
+    if (paletteFileInput.files.length > 0) {
+        const file = paletteFileInput.files[0];
+        const fileExt = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+        if (fileExt === ".json") {
+            parsePaletteJson(file);
+        }
+        else if (fileExt === ".txt" || fileExt === ".pal") {
+            parsePaletteText(file);
+        }
+        else {
+            parsePaletteImage(file);
+        }
+    }
+});
+function parsePaletteImage(file) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            const palette = extractPaletteFromImage(img);
+            customPalette = palette;
+            console.log(`Loaded custom palette with ${palette.length} colors`);
+        };
+        img.onerror = () => {
+            alert("Failed to load palette image");
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+function parsePaletteJson(file) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = JSON.parse(event.target.result);
+            const palette = [];
+            for (const color of data) {
+                if (typeof color === "string") {
+                    palette.push(hexToColor(color));
+                }
+                else if (Array.isArray(color) && color.length >= 3) {
+                    palette.push([color[0], color[1], color[2]]);
+                }
+            }
+            customPalette = palette;
+            console.log(`Loaded custom palette with ${palette.length} colors`);
+        }
+        catch (e) {
+            alert("Invalid palette JSON format: " + e.message);
+        }
+    };
+    reader.readAsText(file);
+}
+function parsePaletteText(file) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const lines = event.target.result.split("\n");
+            const palette = [];
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.length === 0 || trimmed.startsWith("#") || trimmed.startsWith(";"))
+                    continue;
+                const parts = trimmed.split(/[\s,]+/);
+                if (parts.length >= 3) {
+                    const r = parseInt(parts[0], 10);
+                    const g = parseInt(parts[1], 10);
+                    const b = parseInt(parts[2], 10);
+                    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                        palette.push([
+                            Math.max(0, Math.min(255, r)),
+                            Math.max(0, Math.min(255, g)),
+                            Math.max(0, Math.min(255, b)),
+                        ]);
+                    }
+                }
+            }
+            if (palette.length === 0) {
+                alert("No valid colors found in palette file");
+            }
+            else {
+                customPalette = palette;
+                console.log(`Loaded custom palette with ${palette.length} colors`);
+            }
+        }
+        catch (e) {
+            alert("Failed to parse palette file: " + e.message);
+        }
+    };
+    reader.readAsText(file);
+}
+function extractPaletteFromImage(img) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+    const colorSet = new Map();
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        const a = imageData.data[i + 3];
+        if (a > 128) {
+            const key = `${r},${g},${b}`;
+            if (!colorSet.has(key)) {
+                colorSet.set(key, [r, g, b]);
+            }
+        }
+    }
+    return Array.from(colorSet.values());
+}
+
 let quantizedImageDownload = document.createElement("a");
 let palettesImageDownload = document.createElement("a");
 let quantizedImage = document.createElement("canvas");
@@ -167,6 +325,14 @@ quantizeButton.addEventListener("click", () => {
     const ditherMethod = selectedValue(ditherButtons, ditherValues);
     const ditherPattern = selectedValue(ditherPatternButtons, ditherPatternValues);
     const colorZeroAbbreviation = selectedValue(indexZeroButtons, colorZeroAbbreviations);
+
+    const paletteMode = selectedValue(paletteModeButtons, paletteModeValues);
+    if (paletteMode === PaletteMode.Custom && customPalette === null) {
+        alert("Please select a custom palette file first");
+        inProgress = false;
+        return;
+    }
+
     const settingsStr = `-${tileWidthInput.value}x${tileHeightInput.value}-${numPalettesInput.value}p${colorsPerPaletteInput.value}c-${colorZeroAbbreviation}`;
     const totalPaletteColors = parseInt(numPalettesInput.value, radix) *
         parseInt(colorsPerPaletteInput.value, radix);
@@ -230,6 +396,8 @@ quantizeButton.addEventListener("click", () => {
     worker.postMessage({
         action: Action.StartQuantization,
         imageData: imageDataFrom(sourceImage),
+        paletteMode: paletteMode,
+        customPalette: customPalette,
         quantizationOptions: {
             tileWidth: parseInt(tileWidthInput.value, radix),
             tileHeight: parseInt(tileHeightInput.value, radix),

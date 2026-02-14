@@ -40,6 +40,17 @@
       <td><label for="fraction_of_pixels">Fraction of pixels:</label></td>
       <td><input type="number" id="fraction_of_pixels" min="0.01" max="10" step="any" value="0.1"></td>
     </tr>
+    <tr>
+      <td><label for="palette_mode">Palette mode:</label></td>
+      <td>
+        <input type="radio" id="palette_generate" name="palette_mode" value="generate" checked>
+        <label for="palette_generate">Generate from image</label>
+        <br>
+        <input type="radio" id="palette_custom" name="palette_mode" value="custom">
+        <label for="palette_custom">Use custom palette (.pal,.json,.txt):</label>
+        <input type="file" id="palette_file" accept="image/*,.pal,.json,.txt">
+      </td>
+    </tr>
   </table>
   <fieldset>
     <legend>Color index zero behaviour</legend>

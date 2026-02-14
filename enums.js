@@ -29,4 +29,9 @@ export var DitherPattern;
     DitherPattern[DitherPattern["Horizontal2"] = 4] = "Horizontal2";
     DitherPattern[DitherPattern["Vertical2"] = 5] = "Vertical2";
 })(DitherPattern || (DitherPattern = {}));
+export var PaletteMode;
+(function (PaletteMode) {
+    PaletteMode[PaletteMode["Generate"] = 0] = "Generate";
+    PaletteMode[PaletteMode["Custom"] = 1] = "Custom";
+})(PaletteMode || (PaletteMode = {}));
 //# sourceMappingURL=enums.js.map

@@ -30,6 +30,11 @@ var DitherPattern;
     DitherPattern[DitherPattern["Horizontal2"] = 4] = "Horizontal2";
     DitherPattern[DitherPattern["Vertical2"] = 5] = "Vertical2";
 })(DitherPattern || (DitherPattern = {}));
+var PaletteMode;
+(function (PaletteMode) {
+    PaletteMode[PaletteMode["Generate"] = 0] = "Generate";
+    PaletteMode[PaletteMode["Custom"] = 1] = "Custom";
+})(PaletteMode || (PaletteMode = {}));
 const ditherPatterns = new Map();
 ditherPatterns.set(DitherPattern.Diagonal4, [
     [0, 2],
@@ -70,10 +75,14 @@ let quantizationOptions = {
     ditherWeight: 0.5,
     ditherPattern: DitherPattern.Diagonal4,
 };
+let paletteMode = PaletteMode.Generate;
+let customPalette = null;
 onmessage = function (event) {
     updateProgress(0);
     const data = event.data;
     quantizationOptions = data.quantizationOptions;
+    paletteMode = data.paletteMode || PaletteMode.Generate;
+    customPalette = data.customPalette || null;
     ditherPattern = ditherPatterns.get(quantizationOptions.ditherPattern);
     const patternPixels2 = new Set([
         DitherPattern.Diagonal2,
@@ -156,6 +165,10 @@ function quantizeImage(image) {
         for (let i = 0; i < image.data.length; i++) {
             reducedImageData.data[i] = toNbit(image.data[i], quantizationOptions.bitsPerChannel);
         }
+    }
+    if (paletteMode === PaletteMode.Custom && customPalette !== null) {
+        quantizeImageWithCustomPalette(image, reducedImageData, useDither);
+        return;
     }
     const tiles = extractTiles(reducedImageData);
     let avgPixelsPerTile = 0;
@@ -267,6 +280,31 @@ function quantizeImage(image) {
     updateQuantizedImage(quantizeTiles(palettes, reducedImageData, useDither));
     console.log("> MSE: " + meanSquareError(palettes, tiles).toFixed(2));
     console.log(`> Time: ${((performance.now() - t0) / 1000).toFixed(2)} sec`);
+}
+function quantizeImageWithCustomPalette(image, reducedImageData, useDither) {
+    console.log("Using custom palette with " + customPalette.length + " colors");
+    const t0 = performance.now();
+    const palettes = createPalettesFromCustom(customPalette);
+    updateProgress(50);
+    updatePalettes(palettes, false);
+    updateProgress(75);
+    updateQuantizedImage(quantizeTiles(palettes, reducedImageData, useDither));
+    updateProgress(100);
+    console.log(`> Time: ${((performance.now() - t0) / 1000).toFixed(2)} sec`);
+}
+function createPalettesFromCustom(customColors) {
+    const numPalettes = Math.max(1, quantizationOptions.numPalettes || 1);
+    const colorsPerPalette = quantizationOptions.colorsPerPalette || 4;
+    const palettes = [];
+    for (let p = 0; p < numPalettes; p++) {
+        const palette = [];
+        for (let c = 0; c < colorsPerPalette; c++) {
+            const colorIndex = (p * colorsPerPalette + c) % customColors.length;
+            palette.push(cloneColor(customColors[colorIndex]));
+        }
+        palettes.push(palette);
+    }
+    return palettes;
 }
 function reducePalettes(palettes, bitsPerChannel) {
     const result = [];
@@ -930,16 +968,20 @@ function quantizeTiles(palettes, image, useDither) {
         adjustedIndex = 1;
     }
     const reducedPalettes = structuredClone(palettes);
-    for (const pal of reducedPalettes) {
-        for (const color of pal) {
-            toNbitColor(color, bitsPerChannel);
+    // Skip bitsPerChannel reduction for custom palettes - use exact colors
+    if (paletteMode !== PaletteMode.Custom) {
+        for (const pal of reducedPalettes) {
+            for (const color of pal) {
+                toNbitColor(color, bitsPerChannel);
+            }
         }
     }
     const transparentColor = cloneColor(colorZeroValue);
-    if (imageIsReduced)
+    if (imageIsReduced && paletteMode !== PaletteMode.Custom)
         toNbitColor(transparentColor, bitsPerChannel);
     const colorZero = cloneColor(colorZeroValue);
-    toNbitColor(colorZero, bitsPerChannel);
+    if (paletteMode !== PaletteMode.Custom)
+        toNbitColor(colorZero, bitsPerChannel);
     const bmpWidth = Math.ceil(image.width / 4) * 4;
     const quantizedImage = {
         width: image.width,
