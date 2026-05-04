@@ -10,8 +10,8 @@ const fractionOfPixelsInput = document.getElementById("fraction_of_pixels");
 const integerInputs = [
     [tileWidthInput, 8],
     [tileHeightInput, 8],
-    [numPalettesInput, 8],
-    [colorsPerPaletteInput, 4],
+    [numPalettesInput, 4],
+    [colorsPerPaletteInput, 16],
     [bitsPerChannelInput, 5],
 ];
 function validateIntegerInput(numberInput) {
